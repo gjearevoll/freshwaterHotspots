@@ -118,5 +118,5 @@ for (col in c("elvelengde", "enhAreal")) {
 }
 
 saveRDS(mergedEnvCovList, "data/environmentalDataExport.RDS")
-st_write(obj = mergedEnvCovList, dsn = "data/finalData/environmentalData.gpkg", layer='network')
+st_write(obj = mergedEnvCovList, dsn = "data/finalData/environmentalData.gpkg", layer='network', append = FALSE)
 
