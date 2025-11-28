@@ -25,7 +25,8 @@ res <- 500
 
 cat("Loading river network")
 rivers <-  read_sf("data/external/riverNetwork/Elv/Elv_Elvenett.shp")
-rivers2 <- rivers[,c("elvenavn", "elvelengde")]
+rivers <- rivers[!duplicated(rivers),]
+rivers2 <- rivers[!duplicated(rivers),c("elvenavn", "elvelengde")]
 cat("Loading catchments")
 catchments <- read_sf("data/external/riverNetwork/Nedborfelt/Nedborfelt_RegineEnhet.shp")
 catchments <- catchments[,c("vassdragNr", "enhAreal")]
