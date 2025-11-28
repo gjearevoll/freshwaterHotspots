@@ -28,7 +28,13 @@ distanceBuffer <- 2000
 
 # The data that is brought over from the Hotspots pipeline needs to be saved in the folder
 # "data/species/rawData" with the filename "speciesDataProcessed[speciesGroupName].RDS".
+proj <- '+proj=tmerc +lat_0=0 +lon_0=15 +k=0.9996 +datum=WGS84 +units=km +x_0=500 +y_0=0 +no_defs'
 
+# # We import water catchments to find relevant catchments later on
+# catchments <- read_sf("data/external/riverNetwork/Nedborfelt/Nedborfelt_RegineEnhet.shp")
+# catchments$nbfHavNr[is.na(catchments$nbfHavNr)] <- paste0("NAcatchment", 1:length(catchments$nbfHavNr[is.na(catchments$nbfHavNr)]))
+# nedborFelts <- unique(catchments$nbfHavNr)
+vannomrade <- st_read("data/external/riverNetwork/waterAreas.gpkg")
 ###--------------------####
 #### 2. DATA FILTERING ####
 ###--------------------####
@@ -38,6 +44,11 @@ for (speciesGroup in speciesGroups) {
   
   cat("\nImporting", speciesGroup, "data")
   speciesData <- readRDS(paste0("data/species/rawData/speciesDataProcessed",speciesGroup ,".RDS"))
+  
+  if (speciesGroup == "fish") {
+    huitfeldtKaas <- readRDS("localArchive/HuitfeldtKaas/processedDataset.RDS")
+    speciesData[["Huitfeldt Kaas: Freswhater fish distribution in Norway 1918"]] <- huitfeldtKaas
+  }
   
   # Import names of species we want to filter down to.
   cat("\nImporting", speciesGroup, "names")
@@ -101,7 +112,7 @@ for (speciesGroup in speciesGroups) {
     
     # Name columns
     dataset$dataset_name <- names(speciesDataFiltered)[ds]
-    dataset$y <- ifelse(datatype == "PO", 1, dataset$individualCount)
+    dataset$y <- ifelse(dataset$dataType == "PO", 1, dataset$individualCount)
     dataset$e <- ifelse(dataset$dataType == "PO",0, 1)
     dataset$likelihood <- dataset$dataType
     dataset$PO_intercept <- ifelse(dataset$dataType == "PO",1, NA)
@@ -112,16 +123,69 @@ for (speciesGroup in speciesGroups) {
   })  
   species_observations_collated <- do.call(rbind, species_observations_edited)
   
+  
+  ###-----------------------####
+  #### 4. SPECIES FILTERING ####
+  ###-----------------------####
+  
+  
   # Finally, remove any species with less than 50 observations
   speciesTallies <- st_drop_geometry(species_observations_collated) %>%
+    filter(PO_intercept == 1 | (PA_intercept == 1 & y == 1) | (Counts_intercept == 1 & y > 0)) %>%
     group_by(species_name) %>%
     tally() %>% as.data.frame()
   speciesToKeep <- speciesTallies$species_name[speciesTallies$n >= 50]
   speciesToRemove <- speciesTallies$species_name[speciesTallies$n < 50]
+
+  # species_observations <- species_observations_collated[species_observations_collated$species_name %in% speciesToKeep,]
+  # cat("\nRemoving",length(speciesToRemove), "species due to too few observations.")
   
-  species_observations <- species_observations_collated[species_observations_collated$species_name %in% speciesToKeep,]
-  cat("\nRemoving",length(speciesToRemove), "species due to too few observations.")
-  cat("\nSaving species data.")
-  saveRDS(species_observations_collated, paste0("data/species/", speciesGroup,"FinalVersion.RDS"))
+  
+  # Get catchment lists per species
+  speciesCatchmentList <- list()
+  species_observations_collated_list <- list()
+  speciesCatchmentListAllPresences <- list()
+  for (fs in 1:length(speciesToKeep)) {
+    focalSpecies <- speciesToKeep[fs]
+    focalObs <- species_observations_collated[species_observations_collated$species_name %in% focalSpecies,]
+    if (st_crs(focalObs) != st_crs(vannomrade)) {focalObs <- st_transform(focalObs, st_crs(vannomrade))}
+    
+    # See which observations intersect with the omrade
+    waterAreasVec <- unlist(lapply(st_intersects(focalObs, vannomrade), 
+                  FUN = function(x) {if (length(x) == 0) return(NA) else if (length(x) > 1) return(x[[1]]) else x}))
+    focalObs$catchmentLocation <- vannomrade$navn[waterAreasVec]
+    focalObs$presence <- ifelse(focalObs$y > 0,1,0)
+    
+    # Return list of all catchments with any presences
+    speciesCatchmentListAllPresences[[fs]] <- unique(st_drop_geometry(focalObs)[focalObs$y > 0, "catchmentLocation"])
+    
+    totalObsPerCatchment <- st_drop_geometry(focalObs)[!is.na(focalObs$catchmentLocation),] %>%
+      filter(presence == 1) %>%
+      group_by(catchmentLocation) %>% 
+      tally() %>% filter(n > 20) %>%as.data.frame()
+    paObsPerCatchment <- st_drop_geometry(focalObs)[!is.na(focalObs$catchmentLocation),] %>%
+      filter(presence == 1 & likelihood %in% c("PA", "Counts")) %>%
+      group_by(catchmentLocation, likelihood) %>% 
+      tally() %>% filter(n > 0) %>%as.data.frame()
+    
+    
+    filteredSpeciesList <- focalObs[(focalObs$catchmentLocation %in% totalObsPerCatchment$catchmentLocation) &
+                                      (focalObs$catchmentLocation %in% paObsPerCatchment$catchmentLocation),]
+    speciesCatchmentList[[fs]] <- unique(filteredSpeciesList$catchmentLocation)
+    species_observations_collated_list[[fs]] <- filteredSpeciesList
+  }
+  new_species_observation_collated <- do.call(rbind, species_observations_collated_list)
+  
+  # cat("\nSaving species data.")
+  saveRDS(new_species_observation_collated, paste0("data/species/", speciesGroup,"FinalVersion.RDS"))
+  
+  # Filter out any empty groups
+  names(speciesCatchmentList) <- names(speciesCatchmentListAllPresences) <- speciesToKeep
+  speciesCatchmentList <- speciesCatchmentList[lapply(speciesCatchmentList, length) > 0]
+  speciesCatchmentListAllPresences <- speciesCatchmentListAllPresences[lapply(speciesCatchmentListAllPresences, length) > 0]
+  saveRDS(speciesCatchmentList, paste0("data/species/", speciesGroup,"InCatchments.RDS"))
+  saveRDS(speciesCatchmentListAllPresences, paste0("data/species/", speciesGroup,"FullCatchments.RDS"))
+  
 }
+
 
