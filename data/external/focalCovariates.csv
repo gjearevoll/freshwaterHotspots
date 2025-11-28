@@ -1,0 +1,9 @@
+covariate;level;categorical
+net_primary_productivity;catchment;FALSE
+elevation;river;FALSE
+elevation_variability;river;FALSE
+summer_temperature;river;FALSE
+summer_precipitation;catchment;FALSE
+distance_to_roads;river;FALSE
+kalkinnhold;catchment;TRUE
+corine;catchment;TRUE

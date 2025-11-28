@@ -1,34 +1,66 @@
+
+### ENVIRONMENTAL SOURCE DEFINITION ####
+
+# This script defines parameters for extracting the necessary environmental data from their
+# various sources. It relies on the functions found in functions that begin
+# with 'get_'. A full description of each data source can be found at 
+# https://github.com/gjearevoll/BioDivMapping/tree/main/data/temp 
+
 if (covariate == "elevation") {
+  
   # download and save if missing
-  # download
   rasterisedVersion <- get_geonorge(targetDir = dataPath, dataFormat = "TIFF")
   
 } else if (covariate == "elevation_variability") {
+  
+  # Can just download elevation data again - further processing takes place later on
   rasterisedVersion <- checkAndImportRast("elevation", regionGeometryBuffer, file.path(covFolder, "elevation"), quiet = T)
   
 } else if (covariate %in% c("summer_temperature", "summer_precipitation")) {
+  
+  # Met data is available from a download linl
   rasterisedVersion <- checkAndImportRast(covariate, regionGeometryBuffer, dataPath, quiet = TRUE)
   if(is.null(rasterisedVersion)){
-    # download
     rasterisedVersion <- get_met(covariate, dataPath)
   }
   
+} else if (covariate == "corine") {
+  
+  
+  # All this needs to be downloaded from corine beforehand - script for the get_corine function
+  # has an in-depth description of how to do this.
+  corineBase <- get_corine(data_path = "data/external/covariates/corine")  
+  
+  corineProcessed <- crop(corineBase, ext(terra::project(regionGeometryBuffer, corineBase)))
+  levelTable <- levels(corineProcessed)[[1]]
+  allCats <- unique(levelTable[,2])
+  catList <- lapply(allCats, FUN = function(cat1) {
+    if (is.na(cat1)) {return(NA)}
+    catLevels <- levelTable$Value[levelTable$LABEL3 %in% cat1]
+    catRaster <- ifel(corineProcessed %in% catLevels, 1, 0)
+    #contRaster <- terra::project(catRaster, rivers2, method="average")
+    catRaster
+  }) |> setNames(allCats)
+  rasterisedVersion <- unlist(catList)[!is.na(unlist(catList))]
+  names(rasterisedVersion) <- paste0(covariate, "_", gsub(" ","_",stringr::str_replace_all(names(rasterisedVersion), "[[:punct:]]", "_")))
+  rasterisedVersion <- rast(rasterisedVersion)
+  
+  
 } else if (covariate == "habitat_heterogeneity") {
-  corineBase <- checkAndImportRast("corine", regionGeometryBuffer, file.path(covFolder, "corine"), quiet = TRUE)
-  if(is.null(corineBase)){
-    # download
-    corineBase <- get_corine(data_path = "data/external/covariates/corine")  
-    # save
-    file_path <- generateRastFileName(corineBase, "corine", file.path(covFolder, "corine"))
-    writeRaster(corineBase, filename = file_path, overwrite = TRUE)
-  }
+  
+  corineBase <- get_corine(data_path = "data/external/covariates/corine")  
+  file_path <- generateRastFileName(corineBase, "corine", file.path(covFolder, "corine"))
+  writeRaster(corineBase, filename = file_path, overwrite = TRUE)
+  
   croppedRaster <- crop(corineBase, ext(terra::project(regionGeometryBuffer, corineBase)))
   
+  # Need a new package to get habitat heterogeneity
   library(rasterdiv)
   cropFactor <- ifelse(res > 1000, 3, ifelse(res <= 100, 9, 5))
   rasterisedVersion <- Shannon(croppedRaster, window = cropFactor)
 } else if (covariate == "net_primary_productivity") {
   
+  # MODIS functions no longer compatible - unfortunately we have to use previous versions of this data
   rasterisedVersion <- get_modis(regionGeometry, crs, covariate)
 } else if (covariate == "distance_to_roads") {
   
@@ -63,18 +95,6 @@ if (covariate == "elevation") {
   }) |> setNames(allCats)
   rasterisedVersion <- unlist(catList)[!is.na(unlist(catList))]
   names(rasterisedVersion) <- paste0(covariate, "_", gsub(" ","_",stringr::str_replace_all(names(rasterisedVersion), "[[:punct:]]", "_")))
-  extractedValues <-  lapply(1:length(rasterisedVersion), FUN = function(x) {
-    focalRaster <- rasterisedVersion[[x]]
-    extractedValues <- extract(focalRaster,rivers)  
-    colnames(extractedValues)[2] <- "cov"
-    summarisedValues <- extractedValues %>%
-      group_by(ID) %>% 
-      summarise(extracted = mean(cov, na.rm = T)) %>%
-      as.data.frame()  
-    colnames(summarisedValues)[2] <- names(rasterisedVersion)[x]
-    cat("\nSuccesfully extracted river values for", names(rasterisedVersion)[x])
-    summarisedValues <- scale(summarisedValues[,2])
-    summarisedValues
-  })
-  extractedValues <- do.call(cbind, extractedValues)
+  rasterisedVersion <- rast(rasterisedVersion)
+  
 }
