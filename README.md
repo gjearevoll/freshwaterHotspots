@@ -86,4 +86,48 @@ produces a combined fixed effect analysis. It takes a while to run, so it's desi
 This produces visualisations based on the output from the previous script. At the moment that includes richness, hotspot and 
 uncertainty figures for 2 catchments.
 
+## Data
 
+The data storage for the freshwater repo is currently somewhat messier than the original Hotspots repo. Nevertheless, an
+explanation of the structure can be found below.
+
+### External
+
+This folder holds all data that needs to be imported from external sources. It includes river networks and catchment
+mapos from Elvenett, lake borders from Geonorge, as well as all our imported covariate data.
+
+#### Covariates
+
+All data that is improted when we run the code in environmentalImport. The folders are automatically created here, and the
+rasters are all automatically saved here.
+
+#### River Network
+
+All data directly imported from Elvenett and REGINE is saved here. Intermediate data that is created on the way to creating 
+our river network metric graph object is also here - the waterGraphs folders contain these.
+
+#### Water distance
+
+The water distance raster which give the average distance to a river/lake is found here, as is the geonorge data 
+required toc reate it.
+
+### Final data
+
+Processed data which is ready to be fed into the model scripts is stored here. The head folder contains the input 
+required to define a) which observations to feed into the model and b) which catchment/species combinations
+to model.
+
+### Species
+
+All species relevant data can be found here. Processed datasets for each taxa (as produced by the normal Hotspots 
+pipeline) can be found in rawData, the lists of species for each taxa can be found in taxaLists.
+
+#### Model outputs
+
+Here's where we save all the outputs from our models. They are first divided up into taxa names, then by catchments. 
+Visualisations, richness estimates, and other outputs are all saved in the head folder. 
+
+## Functions
+
+A list of functions used regularly in the pipeline. Many have been imported straight from the regular Hotspots
+pipeline, a few have minor adjustments made.
