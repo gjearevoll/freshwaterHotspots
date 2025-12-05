@@ -18,7 +18,7 @@ covariates$streknLnr[is.na(covariates$streknLnr)] <- paste0("nastretch", seq(1:l
 stretchMatch <- covariates[, c("vassdragNr", "streknLnr")]
 
 # Import species data
-speciesGroup <- "insects"
+speciesGroup <- "fish"
 
 modelFolder <- paste0("data/species/", speciesGroup)
 modelOutputFolder <- paste0("data/species/modelOutputs/", speciesGroup)
@@ -46,9 +46,10 @@ for (catchmentNumber in c("212", "016")) {
   sdScaled <- (max(subStrk$sd) - subStrk$sd)/  (max(subStrk$sd) - min(subStrk$sd))
   catchment <- st_zm(cbind(subStrk, totalScaled, sdScaled))
   catchment32633 <- st_transform(catchment, 32633)
+  catchmentTrunctated <- truncateValue(catchment32633, "sdScaled", c(0.01,0.99))
   
   
-  richnessFigure <- ggplot(data = catchment32633["totalScaled"]) +
+  richnessFigure <- ggplot(data = catchmentTrunctated["totalScaled"]) +
     geom_sf(aes(colour = totalScaled), lwd = 0.2)  +
     scale_colour_grass_c(palette = "viridis", na.value = NA, limits = c(0, 1), direction = -1) +
     coord_sf(datum = st_crs(catchment32633)) +
@@ -57,7 +58,7 @@ for (catchmentNumber in c("212", "016")) {
   ggsave(richnessFigure, filename = paste0(modelOutputFolder, "/", gsub("/","",catchmentName), "_richness.png"), 
          units = "px", width = 1100, height = 1100)
   
-  uncertaintyFigure <- ggplot(data = catchment32633["sdScaled"]) +
+  uncertaintyFigure <- ggplot(data = catchmentTrunctated["sdScaled"]) +
     geom_sf(aes(colour = sdScaled), lwd = 0.2)  +
     scale_colour_grass_c(palette = "byr", na.value = NA, limits = c(0, 1), direction = 1) +
     coord_sf(datum = st_crs(catchment32633)) +
